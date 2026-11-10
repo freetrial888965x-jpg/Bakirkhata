@@ -1,0 +1,6 @@
+{
+  "name": "বাকির খাতা",
+  "description": "গ্রাহকদের বাকি ও জমার হিসাব সহজে সংরক্ষণ ও পরিচালনার নির্ভরযোগ্য বাংলা ওয়েবসাইট।",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

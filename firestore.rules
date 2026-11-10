@@ -1,0 +1,171 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Global Helpers
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Validation Blueprints
+    function isValidUser(data, userId) {
+      return data.keys().hasAll(['uid', 'name', 'email', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'name', 'email', 'phone', 'createdAt', 'updatedAt'])
+        && data.uid is string
+        && data.uid == userId
+        && data.uid == request.auth.uid
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 100
+        && data.email is string
+        && data.email.size() >= 3
+        && data.email.size() <= 150
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 30))
+        && data.createdAt is timestamp
+        && (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    function isValidCustomer(data, userId) {
+      return data.keys().hasAll(['userId', 'name', 'phone', 'totalDue', 'totalPayment', 'createdAt'])
+        && data.keys().hasOnly(['userId', 'name', 'phone', 'totalDue', 'totalPayment', 'createdAt', 'updatedAt'])
+        && data.userId is string
+        && data.userId == userId
+        && data.userId == request.auth.uid
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 100
+        && data.phone is string
+        && data.phone.size() <= 30
+        && data.totalDue is number
+        && data.totalDue >= 0
+        && data.totalDue <= 1000000000
+        && data.totalPayment is number
+        && data.totalPayment >= 0
+        && data.totalPayment <= 1000000000
+        && data.createdAt is timestamp
+        && (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    function isValidTransaction(data, userId, customerId) {
+      return data.keys().hasAll(['userId', 'customerId', 'type', 'amount', 'note', 'transactionDate', 'createdAt'])
+        && data.keys().hasOnly(['userId', 'customerId', 'type', 'amount', 'note', 'transactionDate', 'createdAt', 'updatedAt'])
+        && data.userId is string
+        && data.userId == userId
+        && data.userId == request.auth.uid
+        && data.customerId is string
+        && data.customerId == customerId
+        && data.type is string
+        && data.type in ['due', 'payment']
+        && data.amount is number
+        && data.amount > 0
+        && data.amount <= 100000000
+        && data.note is string
+        && data.note.size() <= 300
+        && data.transactionDate is timestamp
+        && data.createdAt is timestamp
+        && (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    // Users Collection (PII isolated strictly to owner)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUser(incoming(), userId)
+        && incoming().createdAt == request.time;
+      allow update: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUser(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'phone', 'email', 'updatedAt']);
+      allow delete: if false;
+
+      // Customers Subcollection
+      match /customers/{customerId} {
+        allow get: if isValidId(userId) && isValidId(customerId) && isOwner(userId);
+        allow list: if isValidId(userId)
+          && isOwner(userId)
+          && resource.data.userId == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidId(customerId)
+          && isOwner(userId)
+          && isValidCustomer(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().totalDue == 0
+          && incoming().totalPayment == 0
+          && exists(/databases/$(database)/documents/users/$(userId));
+        allow update: if isValidId(userId)
+          && isValidId(customerId)
+          && isOwner(userId)
+          && isValidCustomer(incoming(), userId)
+          && incoming().userId == existing().userId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            incoming().diff(existing()).affectedKeys().hasOnly(['name', 'phone', 'updatedAt'])
+            || incoming().diff(existing()).affectedKeys().hasOnly(['totalDue', 'totalPayment', 'updatedAt'])
+          );
+        allow delete: if isValidId(userId)
+          && isValidId(customerId)
+          && isOwner(userId)
+          && exists(/databases/$(database)/documents/users/$(userId));
+
+        // Transactions Subcollection
+        match /transactions/{transactionId} {
+          allow get: if isValidId(userId) && isValidId(customerId) && isValidId(transactionId) && isOwner(userId);
+          allow list: if isValidId(userId)
+            && isValidId(customerId)
+            && isOwner(userId)
+            && resource.data.userId == request.auth.uid
+            && resource.data.customerId == customerId;
+          allow create: if isValidId(userId)
+            && isValidId(customerId)
+            && isValidId(transactionId)
+            && isOwner(userId)
+            && isValidTransaction(incoming(), userId, customerId)
+            && incoming().createdAt == request.time
+            && exists(/databases/$(database)/documents/users/$(userId)/customers/$(customerId));
+          allow update: if isValidId(userId)
+            && isValidId(customerId)
+            && isValidId(transactionId)
+            && isOwner(userId)
+            && isValidTransaction(incoming(), userId, customerId)
+            && incoming().userId == existing().userId
+            && incoming().customerId == existing().customerId
+            && incoming().createdAt == existing().createdAt
+            && incoming().updatedAt == request.time
+            && incoming().diff(existing()).affectedKeys().hasOnly(['type', 'amount', 'note', 'transactionDate', 'updatedAt']);
+          allow delete: if isValidId(userId)
+            && isValidId(customerId)
+            && isValidId(transactionId)
+            && isOwner(userId)
+            && exists(/databases/$(database)/documents/users/$(userId)/customers/$(customerId));
+        }
+      }
+    }
+  }
+}

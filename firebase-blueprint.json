@@ -1,0 +1,158 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated shopkeeper or account owner profile.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the user."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Display name of the user."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 150,
+          "description": "Email identifier (derived from mobile number) of the user."
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 30,
+          "description": "Mobile number of the account owner."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when user profile was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when user profile was last updated."
+        }
+      },
+      "required": ["uid", "name", "email", "createdAt"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "A customer belonging to a specific user's Bakir Khata ledger.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Owner UID matching parent user document."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Customer full name (required)."
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 30,
+          "description": "Optional customer phone number."
+        },
+        "totalDue": {
+          "type": "number",
+          "description": "Running sum of all due transactions for this customer."
+        },
+        "totalPayment": {
+          "type": "number",
+          "description": "Running sum of all payment transactions for this customer."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the customer was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the customer or totals were last updated."
+        }
+      },
+      "required": ["userId", "name", "phone", "totalDue", "totalPayment", "createdAt"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "A single due or payment entry for a customer.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Owner UID matching parent user document."
+        },
+        "customerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Parent customer document ID."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["due", "payment"],
+          "description": "Transaction type: 'due' (বাকি) or 'payment' (জমা)."
+        },
+        "amount": {
+          "type": "number",
+          "description": "Positive transaction amount in Taka."
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Optional transaction note."
+        },
+        "transactionDate": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Date and time selected for the transaction."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the transaction was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the transaction was last edited."
+        }
+      },
+      "required": ["userId", "customerId", "type", "amount", "note", "transactionDate", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "Stores each authenticated user's profile."
+    },
+    "/users/{userId}/customers/{customerId}": {
+      "schema": {
+        "$ref": "#/entities/Customer"
+      },
+      "description": "Stores customers owned exclusively by {userId}."
+    },
+    "/users/{userId}/customers/{customerId}/transactions/{transactionId}": {
+      "schema": {
+        "$ref": "#/entities/Transaction"
+      },
+      "description": "Stores due and payment transactions for a specific customer owned by {userId}."
+    }
+  }
+}
